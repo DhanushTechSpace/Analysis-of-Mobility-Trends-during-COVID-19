@@ -1,0 +1,772 @@
+---
+title: 'Business Statistics End of Term Assessment IB94X0 2023-2024 #1'
+author: '5544129'
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+#Libraries Import
+
+library(tidyverse)
+library(knitr)
+library(emmeans)
+library(car)
+library(gridExtra)
+```
+
+---
+
+Academic Integrity Declaration
+We're part of an academic community at Warwick. Whether studying, teaching, or researching, we’re all taking part in an expert conversation which must meet standards of academic integrity. When we all meet these standards, we can take pride in our own academic achievements, as individuals and as an academic community. 
+
+Academic integrity means committing to honesty in academic work, giving credit where we've used others' ideas and being proud of our own achievements. 
+
+In submitting my work, I confirm that: 
+
+* I have read the guidance on academic integrity provided in the Student Handbook and understand the University regulations in relation to Academic Integrity. I am aware of the potential consequences of Academic Misconduct. 
+
+* I declare that the work is all my own, except where I have stated otherwise.
+
+*	No substantial part(s) of the work submitted here has also been submitted by me in other credit bearing assessments courses of study (other than in certain cases of a resubmission of a piece of work), and I acknowledge that if this has been done this may lead to an appropriate sanction. 
+
+*	Where a generative Artificial Intelligence such as ChatGPT has been used I confirm I have abided by both the University guidance and specific requirements as set out in the Student Handbook and the Assessment brief. I have clearly acknowledged the use of any generative Artificial Intelligence in my submission, my reasoning for using it and which generative AI (or AIs) I have used. Except where indicated the work is otherwise entirely my own.
+
+*	I understand that should this piece of work raise concerns requiring investigation in relation to any of points above, it is possible that other work I have submitted for assessment will be checked, even if marks (provisional or confirmed) have been published. 
+
+*	Where a proof-reader, paid or unpaid was used, I confirm that the proof-reader was made aware of and has complied with the University’s proofreading policy.
+
+---
+
+# Question 1
+
+This report fulfills the following requests to perform specific analyses that examine the effect of COVID response schemes such as Work from Home, Rule of 6 Indoors, and the Eat Out upon the number of bike rentals in the Santander Cycle Hire Scheme
+
+* Perform a regression analysis that examine the effect on the number of bike rentals due to three elements of the COVID response: Work from Home, Rule of 6 Indoors, and the Eat Out to Help Out scheme 
+
+* Analyse if it is appropriate to control for the effect 
+of potential differences between different years, months, and days of the week
+
+
+---
+
+Data is used from the London bike hire scheme 
+(https://data.london.gov.uk/dataset/number-bicycle-hires)
+Each row is about one day in the period from 30th July 2010 to 30th September 2023
+
+## Data Dictionary
+
+
+
+Variable                              | Description
+------------------------------------- | ----------------------------------------------------------------------------------
+`date`                                | Date
+`Hires`                               | Count of the number of bike hires on the respective date
+`schools_closed`                      | Covid Restriction : School closures - complete closures only <br> 1 = implemented, 0 = not implemented
+`pubs_closed`                         | Covid Restriction : Pub closures - excluding pubs that serve food <br> 1 = implemented, 0 = not implemented
+`shops_closed`                        | Covid Restriction : Shop closures - non-essential <br> 1 = implemented, 0 = not implemented
+`eating_places_closed`                | Covid Restriction : Eating Places closures - including pubs that serve food <br> 1 = implemented, 0 = not implemented
+`stay_at_home`                        | Covid Restriction : Stay at home orders <br> 1=implemented, 0=not implemented
+`household_mixing_indoors_banned`     | Covid Restriction : Household mixing indoors banned <br> 1=implemented, 0=not implemented  
+`wfh`                                 | Covid Restriction : Working from home encouraged <br> 1=implemented, 0=not implemented
+`rule_of_6_indoors`                   | Covid Restriction : Rule of 6 indoors <br> 1=implemented, 0=not implemented
+`curfew`                              | Covid Restriction : 10pm curfew on hospitality <br> 1=implemented, 0=not implemented
+`eat_out_to_help_out`                 | Covid Restriction : Eat Out to Help Out scheme <br> 1=implemented, 0=not implemented
+`day`                                 | day of week
+`month`                               | month
+`year`                                | year
+
+```{r}
+#Read csv and store it in data frame bikes_data
+bikes_data <- read.csv('London_COVID_bikes.csv',stringsAsFactors = TRUE)
+
+
+#Convert the required columns into factors
+bikes_data$schools_closed<- factor(bikes_data$schools_closed,c(0,1))
+bikes_data$pubs_closed<- factor(bikes_data$pubs_closed,c(0,1))
+bikes_data$shops_closed<- factor(bikes_data$shops_closed,c(0,1))
+bikes_data$eating_places_closed<- factor(bikes_data$eating_places_closed,c(0,1))
+bikes_data$stay_at_home<- factor(bikes_data$stay_at_home,c(0,1))
+bikes_data$household_mixing_indoors_banned<- factor(bikes_data$household_mixing_indoors_banned,c(0,1))
+bikes_data$wfh<- factor(bikes_data$wfh,c(0,1))
+bikes_data$rule_of_6_indoors<- factor(bikes_data$rule_of_6_indoors,c(0,1))
+bikes_data$curfew<- factor(bikes_data$curfew,c(0,1))
+bikes_data$eat_out_to_help_out<- factor(bikes_data$eat_out_to_help_out,c(0,1))
+bikes_data$year<- factor(bikes_data$year,levels=c('2010','2011','2012','2013','2014','2015','2016','2017','2018','2019','2020','2021','2022','2023'))
+bikes_data$month <- factor(bikes_data$month,levels=c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'))
+```
+
+
+## Data Integrity Checks
+
+### NULL/NA Checks
+
+```{r }
+
+#Function to check for NULL values in each column
+
+cols <- data.frame(sapply(bikes_data ,function(x) sum(is.na(x))),row.names = NULL)
+
+
+#Table to highlight number of NULL values for each Column
+
+cols <- cbind("Column Names" = colnames(bikes_data), cols)
+
+colnames(cols)[2] <- "Count of NULL values"
+
+kable(cols, caption = "Table that gives the count of NULL values for each column")
+
+
+
+```
+
+We note that there no NULL values present in the dataset for any action to be taken.
+
+### Outlier Checks
+
+```{r message=FALSE, warning=FALSE}
+
+#Boxplot which checks for outlier in column Hires
+
+boxplot <- boxplot(bikes_data$Hires, main='Box Plot to check outliers', xlab='Number of bike rental hires')
+
+#Table to indicate the outliers
+outliers <- as.data.frame(boxplot$out, nm = 'Outlier Values')
+
+#Arrange in descending order
+
+(outliers[order(outliers$`Outlier Values`,decreasing = TRUE),])
+                                                         
+```
+
+Outliers from the boxplot analysis need not be removed as the maximum value of 73094 bike hires does not seem like a exceptional high value that needs some action to be taken. 
+
+## Regression Analysis-To examine the effect on the number of bike rentals due to COVID response schemes: Work From Home, Rule of 6 Indoors, and the Eat Out to Help Out
+
+### Simple Regression Analysis to show the effect on bike hires due to the COVID restriction : Work from Home  
+
+```{r}
+
+#Simple Regression model to check the effect of work from home restriction on the bike hires
+
+m.bikes.by.wfh<- lm(Hires~wfh,bikes_data)
+
+#Summary of regression model
+
+summary(m.bikes.by.wfh)
+
+#Summary to highlight the regression coefficients and confidence intervals of the coefficients
+(cbind(coef(m.bikes.by.wfh),confint(m.bikes.by.wfh)))
+
+```
+
+There is a significant positive effect of the Work from home restriction upon bike hires (t(4810)=5.32 , p<.001) when compared to the restriction not in place. With the work from home restriction implemented, there is a significant increase of 1769.1 units on the bike hires (CI = [1117.01,2421.02]) when compared to the work from home restriction not in place. 
+
+### Simple Regression Analysis to show the effect on bike hires due to the COVID restriction : Rule of 6 Indoors
+
+```{r}
+
+#Simple Regression model to check the effect of Rule of 6 indoors COVID restriction on the bike hires
+
+m.bikes.by.rule_of_6_indoors<- lm(Hires~rule_of_6_indoors,bikes_data)
+
+#Summary of the regression model
+
+summary(m.bikes.by.rule_of_6_indoors)
+
+#Summary to highlight the regression coefficients and confidence intervals of the coefficients
+
+(cbind(coef(m.bikes.by.rule_of_6_indoors),confint(m.bikes.by.rule_of_6_indoors)))
+
+
+```
+
+There is a significant positive effect of the Rule of 6 Indoors restriction upon bike hires (t(4810)=9.40 , p<.001) when compared to the scheme not in place. With the Rule of 6 Indoors restriction implemented, there is an significant increase of 9309.7 points on the bike hires (CI = [7367.49,11251.82]) when compared to the rule of 6 indoors restriction not in place. 
+
+### Simple Regression Analysis to show the effect on bike hires due to the COVID restriction : Eat Out to Help Out
+
+```{r}
+
+#Simple Regression Model to check the effect of eat out to help out COVID restriction on bike hires
+
+m.bikes.by.eat_out_to_help_out<- lm(Hires~eat_out_to_help_out,bikes_data)
+
+#Summary of the regression model
+
+summary(m.bikes.by.eat_out_to_help_out)
+
+#Summary to highlight the regression coefficients and confidence intervals of the coefficients
+
+(cbind(coef(m.bikes.by.eat_out_to_help_out),confint(m.bikes.by.eat_out_to_help_out)))
+
+```
+
+There is a significant positive effect of the Eat Out to Help Out scheme upon bike hires (t(4810)=5.39 , p<.001) when compared to the scheme not in place. With the Eat Out to Help Out scheme implemented, there is an significant increase of 9868.5 units on the bike hires (CI = [6276.16,13460.86]) when compared to the eat out to help out restriction not in place
+
+```{r}
+
+#Line Chart which compares the number of bike hires when work from home restriction is implemented and when it is not implemented
+m.bikes.by.wfh.emm <- emmeans(m.bikes.by.wfh, ~wfh)
+summ.m.bikes.by.wfh.emm <- summary(m.bikes.by.wfh.emm)
+summ.m.bikes.by.wfh.emm$wfh <- if_else(summ.m.bikes.by.wfh.emm$wfh == 0,'Not Implemented','Implemented')
+summ.m.bikes.by.wfh.emm$wfh <- factor(summ.m.bikes.by.wfh.emm$wfh,c('Not Implemented','Implemented'))
+
+ggplot1 <- ggplot(summ.m.bikes.by.wfh.emm)+ geom_line(mapping=aes(x=wfh,y=emmean),group=1)+geom_point(mapping=aes(x=wfh,y=emmean))+ylim(0,30000)+xlab('Work from home restriction') + ylab('Number of bike hires')
+
+#Line Chart which compares the number of bike hires when rule of 6 indoors restriction is implemented and when it is not implemented
+m.bikes.by.rule_of_6_indoors.emm <- emmeans(m.bikes.by.rule_of_6_indoors, ~rule_of_6_indoors)
+summ.m.bikes.by.rule_of_6_indoors.emm <- summary(m.bikes.by.rule_of_6_indoors.emm)
+summ.m.bikes.by.rule_of_6_indoors.emm$rule_of_6_indoors <- if_else(summ.m.bikes.by.rule_of_6_indoors.emm$rule_of_6_indoors == 0,'Not Implemented','Implemented')
+summ.m.bikes.by.rule_of_6_indoors.emm$rule_of_6_indoors <- factor(summ.m.bikes.by.rule_of_6_indoors.emm$rule_of_6_indoors,c('Not Implemented','Implemented'))
+ggplot2 <- ggplot(summ.m.bikes.by.rule_of_6_indoors.emm)+geom_line(mapping=aes(x=rule_of_6_indoors,y=emmean),group=1)+geom_point(mapping=aes(x=rule_of_6_indoors,y=emmean))+ylim(0,40000)+xlab('Rule of 6 Indoors restriction') + ylab('Number of bike hires')
+
+#Line Chart which compares the number of bike hires when eat out to help out restriction is implemented and when it is not implemented
+
+m.bikes.by.eat_out_to_help_out.emm <- emmeans(m.bikes.by.eat_out_to_help_out, ~eat_out_to_help_out)
+summ.m.bikes.by.eat_out_to_help_out.emm <- summary(m.bikes.by.eat_out_to_help_out.emm)
+summ.m.bikes.by.eat_out_to_help_out.emm$eat_out_to_help_out <- if_else(summ.m.bikes.by.eat_out_to_help_out.emm$eat_out_to_help_out == 0,'Not Implemented','Implemented')
+summ.m.bikes.by.eat_out_to_help_out.emm$eat_out_to_help_out <- factor(summ.m.bikes.by.eat_out_to_help_out.emm$eat_out_to_help_out,c('Not Implemented','Implemented'))
+
+ggplot3 <- ggplot(summ.m.bikes.by.eat_out_to_help_out.emm)+geom_line(mapping=aes(x=eat_out_to_help_out,y=emmean),group=1)+geom_point(mapping=aes(x=eat_out_to_help_out,y=emmean))+ylim(0,40000)+xlab('Eat out to help out restriction') + ylab('Number of bike hires')
+
+#Arrange the line charts for each restriction
+grid.arrange(ggplot1,ggplot2,ggplot3,nrow(2))
+
+```
+
+Figure 1: Line Chart to highlight the difference in bike hires during the implementation of Work from home, Rule of 6 Indoors, Eat out to help out restrictions.
+
+### Multiple Regression- Model Comparison to check if there is significant improvement
+
+```{r}
+#Regression Model to check the effect of Work from home, Rule of 6 Indoors, Eat out to help out restrictions by adding control over each of these effects
+
+m.bikes.by.restr <- lm(Hires~wfh+eat_out_to_help_out+rule_of_6_indoors, bikes_data)
+
+summary(m.bikes.by.restr)
+
+```
+
+There is a significant positive increase of 1177.9 of bike hires during the Work from Home scheme (t(4808)=3.476 , p<.001) when compared to the other schemes not in place. There is also significant positive increase of 10309.3 of bike hires during the Rule of 6 Indoors scheme (t(4808)=5.680 , p<.001) when compared to the other schemes not in place. Also, a significant significant positive increase of 8542.4 of bike hires during the Eat out to help out scheme (t(4808)=8.418 , p<.001) when compared to the other schemes not in place.
+
+```{r}
+#Regression Model to check the effect of Work from home, Rule of 6 Indoors, Eat out to help out restrictions by adding the interaction between these effects
+m.bikes.by.restr.int <- lm(Hires~wfh*eat_out_to_help_out*rule_of_6_indoors, bikes_data)
+
+summary(m.bikes.by.restr.int)
+```
+
+As there is no much data for the given pair of the levels of variables, there are singularity issues in the model which includes the interaction. However, there is a significant interaction between Work from home and Rule of 6 Indoors that shows a decrease in bike hires 8791.8 with (t(4807) = -2.478, p < 0.001). 
+
+This interaction term tells there is a significant difference between 
+<br>(1) the difference in bike hires during work from home implementation when Rule of 6 Indoors was not implemented ,and 
+<br>(2) the difference in bike hires during work from home implementation when Rule of 6 Indoors was implemented
+
+```{r}
+#Model comparison to check if adding the additional interaction term improves the model
+anova(m.bikes.by.restr,m.bikes.by.restr.int)
+```
+
+On addition of the interaction term, there is a significant improvement in the model when compared to the model that predicted the estimates with control over effects. With the interaction term in the model, the model comparison test shows that the overall model fit is significantly improved (F(1,4807) = 6.1404, p = 0.013)
+
+## Regression Analysis- To check if it is appropriate to control for the effect of potential differences between different years, months, and days
+ 
+
+### Regression Model to check for the effect of Work from Home Restriction with control of year,month and day effects.
+
+
+```{r}
+
+#Estimated Marginal Means of the number of bike hires during Work from home implementation
+(  m.bikes.by.wfh.emm )
+
+#Regression Model to check the for the effect of Work from Home Restriction with control of year,month and day effects
+
+m.bikes.by.wfh.year.month.day <- lm(Hires~wfh+year+month+day, bikes_data)
+(  m.bikes.by.wfh.year.month.day.emm <- emmeans(m.bikes.by.wfh.year.month.day, ~wfh)  )
+
+#Model comparison to check if having the additional control over the effect of year, month and day improves the model
+anova(m.bikes.by.wfh,m.bikes.by.wfh.year.month.day)
+
+
+```
+
+Without control, when bike hires are directly compared when Work from home is implemented, the differences in bike rentals are much larger. With control for year,month and day, difference in bike rentals between the periods during Work from Home implementation, a model comparison test shows that the overall model fit is significantly improved (F(30,4780) = 211.41, p < 0.05)
+
+```{r}
+
+#Data Frame to summarize the results of the simple regression model and multiple regression model which controls for the effect of year,month and day
+
+m.bikes.by.wfh.emm.summary <- summary(m.bikes.by.wfh.emm)
+m.bikes.by.wfh.emm.summary$model <- "Univariate"
+m.bikes.by.wfh.year.month.day.emm.summary <- summary(m.bikes.by.wfh.year.month.day.emm)
+m.bikes.by.wfh.year.month.day.emm.summary$model <- "With Control of Year & Month & Day"
+m.gain.two.models.emm.summary <- rbind(m.bikes.by.wfh.emm.summary, m.bikes.by.wfh.year.month.day.emm.summary)
+m.gain.two.models.emm.summary$wfh <- if_else(m.gain.two.models.emm.summary$wfh == 0,'Not Implemented','Implemented')
+m.gain.two.models.emm.summary$wfh <- factor(m.gain.two.models.emm.summary$wfh,c('Not Implemented','Implemented'))
+
+#Line Range plot to highlight the difference in the bike hires when controlling for the effect of year,day and month
+ggplot(m.gain.two.models.emm.summary, aes(x=wfh, y=emmean, ymin=lower.CL, ymax=upper.CL, col=model)) + geom_point() + geom_linerange() + labs(x="Work From Home Restriction", y="Number of Bike Rentals", col="Model")
+```
+
+Line Range analysis illustrates that there is an increase in bike hires in the Univariate Model which does not include the control effect of year,month and day. However, there is decrease in bike hires observed for the model which includes the control effect of year,month and day. 
+
+###  Regression Model to check for the effect of Rule of Six Indoors Restriction with control for the effect of year,day and month
+
+```{r}
+
+## Controlling for the effect of year, month and day
+
+#Estimated Marginal Means of the number of bike hires during Rule of 6 Indoors implementation
+(m.bikes.by.rule_of_6_indoors.emm)
+
+#Regression Model to check the for the effect of Rule of 6 Indoors Restriction with control of year,month and day effects
+
+m.bikes.by.rule_of_6_indoors.year.month.day <- lm(Hires~rule_of_6_indoors+year+month+day, bikes_data)
+(  m.bikes.by.rule_of_6_indoors.year.month.day.emm <- emmeans(m.bikes.by.rule_of_6_indoors.year.month.day,~rule_of_6_indoors)  )
+
+#Model comparison to check if having the additional control over the effect of year, month and day improves the model
+anova(m.bikes.by.rule_of_6_indoors,m.bikes.by.rule_of_6_indoors.year.month.day)
+
+```
+
+Without control when bike hires are directly compared when rule of 6 indoors scheme was implemented, differences in bike hires is much larger.  With control for year, month and day, a model comparison test shows that the overall model fit is significantly improved (F(30,4780) = 199.73, p < 0.05)
+
+```{r}
+
+#Data Frame to summarize the results of the simple regression model and multiple regression model which controls for the effect of year,month and day
+
+m.bikes.by.rule_of_6_indoors.emm.summary <- summary(m.bikes.by.rule_of_6_indoors.emm)
+m.bikes.by.rule_of_6_indoors.emm.summary$model <- "Univariate"
+m.bikes.by.rule_of_6_indoors.year.month.day.emm.summary <- summary(m.bikes.by.rule_of_6_indoors.year.month.day.emm)
+m.bikes.by.rule_of_6_indoors.year.month.day.emm.summary$model <- "With Control of Year & Month & Day"
+m.gain.two.models.1.emm.summary <- rbind(m.bikes.by.rule_of_6_indoors.emm.summary, m.bikes.by.rule_of_6_indoors.year.month.day.emm.summary)
+m.gain.two.models.1.emm.summary$rule_of_6_indoors <- if_else(m.gain.two.models.1.emm.summary$rule_of_6_indoors == 0,'Not Implemented','Implemented')
+m.gain.two.models.1.emm.summary$rule_of_6_indoors <- factor(m.gain.two.models.1.emm.summary$rule_of_6_indoors,c('Not Implemented','Implemented'))
+
+#Line Range plot to highlight the difference in the bike hires when controlling for the effect of year,day and month
+
+ggplot(m.gain.two.models.1.emm.summary, aes(x=rule_of_6_indoors, y=emmean, ymin=lower.CL, ymax=upper.CL, col=model)) + geom_point() + geom_linerange() + labs(x="Rule of 6 Indoors", y="Number of Bike Rentals", col="Model")
+
+```
+
+Line Range analysis illustrates that there is an increase in bike hires in the Univariate Model which does not include the control effect of year,month and day. There is also an increase in bike hires observed for the model which includes the control effect of year,month and day. 
+
+### Regression Model to check for the effect of Eat Out to Help Out with control for the effect of year, day and month
+
+```{r}
+## Controlling for the effect of year, month and day
+
+#Estimated Marginal Means of the number of bike hires during Eat out to Help out implementation
+(m.bikes.by.eat_out_to_help_out.emm)
+
+#Regression Model to check the for the effect of Eat out to Help out Restriction with control of year,month and day effects
+m.bikes.by.eat_out_to_help_out.year.month.day <- lm(Hires~eat_out_to_help_out+year+month+day, bikes_data)
+(  m.bikes.by.eat_out_to_help_out.year.month.day.emm <- emmeans(m.bikes.by.eat_out_to_help_out.year.month.day,~eat_out_to_help_out)  )
+
+#Model comparison to check if having the additional control over the effect of year, month and day improves the model
+anova(m.bikes.by.rule_of_6_indoors,m.bikes.by.eat_out_to_help_out.year.month.day)
+
+```
+
+Without control when bike hires are directly compared when Eat Out to Help Out scheme was implemented, differences in bike hires is much larger.  With control of year, month and day , a model comparison test shows that the overall model fit is significantly improved (F(30,4780) = 199.9, p < 0.05)
+
+```{r}
+
+#Data Frame to summarize the results of the simple regression model and multiple regression model which controls for the effect of year,month and day
+
+m.bikes.by.eat_out_to_help_out.emm.summary <- summary(m.bikes.by.eat_out_to_help_out.emm)
+m.bikes.by.eat_out_to_help_out.emm.summary$model <- "Univariate"
+m.bikes.by.eat_out_to_help_out.year.month.day.emm.summary <- summary(m.bikes.by.eat_out_to_help_out.year.month.day.emm)
+m.bikes.by.eat_out_to_help_out.year.month.day.emm.summary$model <- "With Control of Year & Month & Day"
+m.gain.two.models.2.emm.summary <- rbind(m.bikes.by.eat_out_to_help_out.emm.summary, m.bikes.by.eat_out_to_help_out.year.month.day.emm.summary)
+m.gain.two.models.2.emm.summary$eat_out_to_help_out <- if_else(m.gain.two.models.2.emm.summary$eat_out_to_help_out == 0,'Not Implemented','Implemented')
+m.gain.two.models.2.emm.summary$eat_out_to_help_out <- factor(m.gain.two.models.2.emm.summary$eat_out_to_help_out,c('Not Implemented','Implemented'))
+
+#Line Range plot to highlight the difference in the bike hires when controlling for the effect of year,day and month
+
+ggplot(m.gain.two.models.2.emm.summary, aes(x=eat_out_to_help_out, y=emmean, ymin=lower.CL, ymax=upper.CL, col=model)) + geom_point() + geom_linerange() + labs(x="Eat out to Help out", y="Number of Bike Rentals", col="Model")
+
+```
+
+Line Range analysis illustrates that there is an increase in bike hires in the Uni variate Model which does not include the control effect of year,month and day. There is also an increase in bike hires observed for the model which includes the control effect of year,month and day. 
+
+---
+
+# Question 2
+
+This report fulfils the following requests to perform specific analyses that examine the effect of book sales based on various effects
+
+* Analyse if there are more/fewer sales depending upon average review scores and total number of reviews 
+
+* Analyse the effect of sale price and genre of the book upon the its sales
+
+```{r}
+#Read csv and store it in data frame books_data
+books_data <- read.csv('publisher_sales.csv',stringsAsFactors = TRUE)
+
+```
+
+
+
+## Data Dictionary - Books Data
+
+Data is used from an e-book publishing company. Each record represents a book.
+
+Variable                              | Description
+------------------------------------- | ----------------------------------------------------------------------------------
+`sold.by`                             | Publisher of the book
+`publisher.type`                      | Publisher type
+`genre`                               | Genre of the Book
+`avg.review`                          | Average of the total review for the book within the time period
+`daily.sales`                         | Average number of sales (minus refunds) across all days in the period
+`total.reviews`                       | Total Number of Reviews in the period
+`sale.price`                          | Average price for which the book is sold in the period
+
+## Data Integrity Checks
+
+### NULL/NA Checks
+
+```{r}
+
+#Function to check for NULL values in each column
+
+cols.books <- data.frame(sapply(books_data ,function(x) sum(is.na(x))),row.names = NULL)                     
+
+#Table to highlight number of NULL values for each Column
+
+cols.books <- cbind("Columns Names" = colnames(books_data), cols.books)
+
+colnames(cols.books)[2] <- "Count of NULL values"
+
+kable(cols.books, caption = "Table that gives the count of NULL values for each column")
+
+
+```
+
+### Outlier Checks
+
+#### Outlier Check - Average Review Variable 
+
+```{r}
+
+#Boxplot which checks for outliers in column avg.review
+boxplot.avg.review <- boxplot(books_data$avg.review, main='Box Plot to check outliers', xlab='Average of the total review for the book within the time period')
+
+#Table to indicate the outliers 
+outliers <- as.data.frame(boxplot.avg.review$out, nm = 'Outlier Values')
+
+#Summary of the outlier Values
+summary(outliers$`Outlier Values`)
+
+
+```
+
+#### Outlier Check - Average number of sales Variable 
+
+```{r}
+
+#Boxplot which checks for outliers in column daily.sales
+
+boxplot.daily.sales <- boxplot(books_data$daily.sales, main='Box Plot to check outliers', xlab='Average number of sales (minus refunds) across all days in the period')
+
+#Table to indicate the outliers 
+outliers <- as.data.frame(boxplot.daily.sales$out, nm = 'Outlier Values')
+
+#Summary of the outlier Values
+summary(outliers$`Outlier Values`)
+
+#Removing book with negative daily.sales
+books_data <-filter(books_data,books_data$daily.sales != -0.53)
+
+```
+
+#### Outlier Check - Total Number of Reviews Variable
+
+```{r}
+
+#Boxplot which checks for outliers in column total.reviews
+
+boxplot.total.reviews <- boxplot(books_data$total.reviews, main='Box Plot to check outliers', xlab='Average price for which the book is sold in the period')
+
+#Table to indicate the outliers 
+
+outliers <- as.data.frame(boxplot.total.reviews$out, nm = 'Outlier Values')
+
+#Summary of the outlier Values
+summary(outliers$`Outlier Values`)
+
+
+```
+
+Total Number of Reviews variable has 0 as the only outlier.
+
+#### Data Integrity Check - To Check if the avg.review variable is 0 when total.reviews is 0 
+
+```{r}
+#Conditional check
+books_data$Integrity.chk <- if_else(books_data$avg.review == 0 & books_data$total.reviews ==1,0,1)
+
+nrow(filter(books_data,Integrity.chk==0))
+
+```
+
+Thus we can say that when total.reviews is 0, avg.review variable is 0
+
+#### Data Preparation- To Change the values of genre variable for better illustration
+
+```{r}
+
+# Change of required values in genre variable
+
+books_data <- mutate(books_data,genre = if_else(genre == "adult_fiction", "Adult Fiction",if_else(genre == "non_fiction","Non Fiction","YA Fiction")))
+
+#Factor Conversion
+
+books_data$genre <- as.factor(books_data$genre)
+
+```
+
+## Regression Analysis - To Show effect of average review and total number of reviews on book sales
+
+```{r}
+
+#Regression Model to check the for the effect of Average reviews with control of effect total reviews on daily sales of the book
+
+m.sales.by.avg.rev.total.review <- lm(daily.sales ~ avg.review+total.reviews, books_data)
+
+#Summary of the regression model
+
+summary(m.sales.by.avg.rev.total.review)
+
+
+```
+
+
+```{r}
+
+#Summary of the regression model with confidence intervals included
+
+cbind(coef(m.sales.by.avg.rev.total.review), confint(m.sales.by.avg.rev.total.review))
+
+```
+
+When estimating the effect of both average number of reviews and total number of reviews in the same regression we find that when controlling the other variable, 1 unit of increase in average reviews predicts 4.3 reduction in daily sales in books (t(5996) = -8.36, p<0.001, 95% CI [-5.31, -3.29]) and an increase in total number of reviews by 1 predicts an increase in book sales of 0.53 with (t(5996) = 68.96, p<0.001, 95% CI [0.52, 0.55]).
+
+```{r}
+# Tibble with values used for prediction of book sales based on the average review and total number of reviews
+
+book.sales.preds <- tibble(avg.review = rep(c(1.5, 3, 4.5), 3),
+                      total.reviews = c(rep(70, 3), rep(140, 3), rep(210, 3)))
+
+# Predict the book sales value using the regression model by controlling for the effects of average reviews and total number of reviews
+
+book.sales.preds <- mutate(book.sales.preds,
+                         score.hat = predict(m.sales.by.avg.rev.total.review, book.sales.preds))
+
+#Line chart that shows the effect of average number of reviews in given time period on book sales
+
+ggplot(book.sales.preds) + geom_line(aes(x = avg.review, y = score.hat, colour = as.factor(total.reviews))) + labs(colour = "Total Number of Reviews in the time period") + ylab("Predicted Book Sales") + xlab("Average number of reviews in the time period")
+```
+
+This figure shows the decreasing predicted book sales on the y-axis as a result of increase in  average number of reviews on the x-axis. The separate lines tell us the predicted daily book sales for low, medium and high total number of reviews in the time period. So in this model increase in average number of reviews predicts a decrease in book sales, along with the additional effect of increase in the total number of reviews also decreasing the test score
+
+```{r}
+
+#Line chart that shows the effect of total number of reviews in given time period on book sales
+
+ggplot(book.sales.preds) + geom_line(aes(x = total.reviews, y = score.hat, colour = as.factor(avg.review))) + labs(colour = "Average Number of reviews in the time period") + ylab("Predicted Book sales") + xlab("Total Number of Reviews in the time period")
+```
+
+This figure shows us the effect of total number number of reviews on the average sales. Three separate lines shows the books sales for values 1.5, 3 and 4.5 in the average number of reviews in the period. From the figure, we can say that increase in the total number of reviews increases the daily book sales with the additional effect of decrease in average number of reviews in the time period.
+
+
+```{r}
+
+#Regression Model to check the for the effect of Average reviews and total number fo reviews including their interaction effect on the book sales
+
+m.sales.by.avg.rev.total.review.int <- lm(daily.sales ~ avg.review*total.reviews, books_data)
+
+#Summary of the regression model
+
+summary(m.sales.by.avg.rev.total.review.int)
+
+#Summary of the regression model with confidence intervals included
+
+cbind(coef(m.sales.by.avg.rev.total.review.int), confint(m.sales.by.avg.rev.total.review.int))
+
+```
+
+When we also include an interaction term in another model, the interaction is a significant predictor that shows an increase in book sales by 0.10 with (t(5995) = 12.215, p < 0.001) 
+The results also show that there is a significant main effect of both average reviews (b=-14.68, CI = [-16.62, -12.74], t(5995)=-14.838, p<0.001) and total number of reviews (b=0.14, CI = [0.07, 0.20], t(5995)=4.212, p<0.001).
+
+```{r}
+# Predict the book sales value using the regression model which includes the interaction effects of average reviews and total number of reviews
+
+book.sales.preds <- mutate(book.sales.preds,
+                         score.hat = predict(m.sales.by.avg.rev.total.review.int, book.sales.preds))
+
+#Arrange the line charts for each prediction
+
+grid.arrange(ggplot(book.sales.preds) + geom_line(aes(x = avg.review, y = score.hat, colour = as.factor(total.reviews))) + labs(colour = "Total Number of Reviews in the time period") + ylab("Predicted Book Sales") + xlab("Average number of reviews in the time period"),ggplot(book.sales.preds) + geom_line(aes(x = total.reviews, y = score.hat, colour = as.factor(avg.review))) + labs(colour = "Average Number of reviews in the time period") + ylab("Predicted Book sales")+ xlab("Total Number of Reviews in the time period"))
+
+
+```
+
+However, when we have a significant interaction term, we have to think carefully about how we interpret the main effects. These are now the estimates of the slope/effect for that Average of the total review of book when the value of the other Total number of reviews in the interaction is zero. This can be misleading because when total number of reviews is zero, the average number of reviews should be zero.
+
+
+```{r}
+#Model comparison to check if having the additional interaction term improves the model
+
+anova(m.sales.by.avg.rev.total.review,m.sales.by.avg.rev.total.review.int)
+```
+
+When we also include an interaction term in another model, the interaction is a significant predictor and a model comparison test shows that the overall model fit is significantly improved (F(1,5995) = 149.21, p < 0.05)
+
+### Multi Collinearity Check - To check if the average of the reviews and total number of reviews in the time period are correlated
+
+```{r}
+# Variance Inflation Factor(VIF) to check for data based multi collinearity without the interaction terms
+
+vif(m.sales.by.avg.rev.total.review)
+```
+
+Using Variance Inflation Factor(VIF) to check for data based multi collinearity , we get a score of less than 5 for both the variables. Hence it is justfied to keep these predictor variables in the model.
+
+```{r message=FALSE, warning=FALSE}
+# Variance Inflation Factor(VIF) to check for multi collinearity with the interaction term
+
+vif(m.sales.by.avg.rev.total.review.int)
+```
+
+However when we check for multi collinearity for the model with the interaction term, we can see a strong correlation between the predictor variables as the VIF scores are greater than 5. This is because both the predictors are positive scores, so the interaction will be inherently corelated with the main effect predictors. 
+
+VIF scores can be checked again for structural multicollinearity by re-scaling the data and normalising around zero. This can be done by taking each of the values of average reviews and total reviews and subtracting it with its mean. 
+
+```{r message=FALSE, warning=FALSE}
+#Normalization of average reviews and total reviews variable
+
+books_data <- mutate(books_data, normed_avg.reviews = avg.review -mean(avg.review) , normed_total.reviews = total.reviews - mean(total.reviews))
+
+#Regression model to check for the effect of normalized average reviews and normalized total number of reviews on the daily sales
+
+m.sales.by.avg.rev.total.review.int.normed <- lm(daily.sales ~ normed_avg.reviews*normed_total.reviews, books_data)
+
+#Summary fo the regression model
+
+summary(m.sales.by.avg.rev.total.review.int)
+
+# Variance Inflation Factor(VIF) to check for multi collinearity of the standardized model
+
+vif(m.sales.by.avg.rev.total.review.int.normed)
+
+```
+
+Using VIF measures, now we can infer that both the predictors are not inherently corelated as the vif scores for each of these predictors are much lower.
+
+
+## Regression Analysis - To show the effect of sales price and genre on daily book sales
+
+```{r}
+#Regression Model to check the for the effect of average sales price on the book sales
+
+m.book.sales.by.sale.price <- lm(daily.sales ~ sale.price, books_data)
+summary(m.book.sales.by.sale.price)
+cbind(coef(m.book.sales.by.sale.price), confint(m.book.sales.by.sale.price))
+```
+
+When estimating the effect of average sales price on the average sales of book within the period, we find that with a 1 unit of increase in average sales price of the book we can predict a 3.98 reduction in the average daily sales of the books (t(5997) = -45.36, p<0.001, 95% CI [-4.14, -3.81]).
+
+
+```{r}
+#Scatter plot which shows the effect of sales price on daily sales of the book
+
+ggplot(books_data, aes(y=daily.sales, x=sale.price)) + geom_point(color='coral') + geom_smooth(method = lm)+ ylab("Average number of daily sales of books") + xlab("Average sales price")
+
+```
+
+The regression coefficient tells us about the best-fitting straight line through the data. The slope tells us about the effect a unit change in our independent variable (on the *x* axis) has on our dependent variable (on the *y* axis). 
+The coefficient 3.97 tells us that for unit increase in average sales price we can expect decrease in the book sales by 3.97 units (slope of the line). The overall scatter plot analysis tells us that an increase in the sales price cause a decrease in the average of the daily sales within the time period. 
+
+
+```{r}
+
+#Regression Model to check the for the effect of average sales price with control of effect of genre variable on daily sales of the book
+
+m.book.sales.by.sale.price.genre <- lm(daily.sales ~ sale.price+genre, books_data)
+
+#Summary of the regression  model
+
+summary(m.book.sales.by.sale.price.genre)
+
+#Summary of the regression model with confidence intervals included
+
+cbind(coef(m.book.sales.by.sale.price.genre), confint(m.book.sales.by.sale.price.genre))
+```
+
+When estimating the effect of both sales price and genre in the same regression on the average daily sales of the book,  we find that when controlling for effect of genre on book sales, 1 unit increase in sales price predicts a significant reduction of 1 unit in daily sales of the book(t(5995) = -10.034, p<0.001, 95% CI [-1.71, -1.15]). We can also deduce that there is a significant decrease in the average sales of the book by 9 when genre 'adult_fiction' is compared to 'non_fiction' (t(5995) = -7.386, p<0.001, 95% CI [-11.40, -6.62]). Similarly, we can predict there is a significant increase in book sales of 30 when genre 'adult_fiction' is compared to 'YA_fiction' (t(5995) = 43.764, p<0.001, 95% CI [29.17, 31.91])
+
+
+```{r}
+# Tibble with values used for prediction of book sales based on the average sales price and genre of the books
+
+sales.preds <- tibble(sale.price = rep(c(2, 8, 21), 3),
+                      genre = c(rep("Adult Fiction", 3), rep("Non Fiction", 3),rep("YA Fiction", 3)))
+
+# Predict the book sales value using the regression model by controlling for the effects of average sales price and genre of the books
+
+sales.preds <- mutate(sales.preds,
+                         score.hat = predict(m.book.sales.by.sale.price.genre, sales.preds))
+
+#Line chart that shows the effect of sales price across different genres in given time period on book sales
+
+ggplot(sales.preds) + geom_line(aes(x = sale.price, y = score.hat, colour = as.factor(genre))) + labs(colour = "Genre of Book") + ylab("Predicted Average sales in book") + xlab("Average sales price of the book within the time period")
+
+
+```
+
+This figure shows the decrease in book sales on the y-axis due to the increase in  the average sales price for the book on the x-axis. The separate lines indicates the predicted average daily book sales for Adult Fiction, Non Fiction and YA Fiction in the time period. So in this model increase in average sales price predicts a decrease in book sales across all genres.
+
+
+```{r}
+#Regression Model to check the for the effect of average sales price and genre of books including their interaction on the book sales
+
+m.book.sales.by.sale.price.genre.int <- lm(daily.sales ~ sale.price*genre, books_data)
+
+#Summary of the regression model
+summary(m.book.sales.by.sale.price.genre.int)
+
+#Summary of the regression model including the interaction terms
+cbind(coef(m.book.sales.by.sale.price.genre.int), confint(m.book.sales.by.sale.price.genre.int))
+
+
+```
+
+When we try to include the interaction effect of average sales price of the book and genre on the daily sales of the book in another model, it shows that there is a significant decrease in the book sales of 2.84 with  (t(5993) = -8.12, p < 0.001) when the effect of average sales price on Adult fiction is compared to the effect of average sales price on Non Fiction genre
+
+
+```{r}
+# Tibble with values used for prediction of book sales based on the average sales price and genre of the books
+sales.preds <- tibble(sale.price = rep(c(2, 8, 21), 3),
+                      genre = c(rep("Adult Fiction", 3), rep("Non Fiction", 3),rep("YA Fiction", 3)))
+
+# Predict the book sales value using the regression model which includes the interaction effects of average sales price and genre of books
+
+sales.preds <- mutate(sales.preds,
+                         score.hat = predict(m.book.sales.by.sale.price.genre.int, sales.preds))
+
+#Line chart that shows the effect of sales price on book sales with the interaction across different genres in given time period 
+
+ggplot(sales.preds) + geom_line(aes(x = sale.price, y = score.hat, colour = as.factor(genre))) + labs(colour = "Genre of Book") + ylab("Predicted Average sales in book") + xlab("Average sales price of the book within the time period")
+```
+
+The Line graph tells us that with increase in average sales price of book, there is a decrease in the daily sales of book across all genres with a sharp decline in sales for "YA Fiction"
+
+
+
+---
